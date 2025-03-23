@@ -1,4 +1,4 @@
-# Kentucky Adventure Website
+# Kentucky ADV Website
 
 A Next.js-based website for managing and displaying adventure routes, blog posts, and GPX tracks.
 
