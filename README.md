@@ -1,4 +1,4 @@
-# Kentucky Adventure Website
+# Kentucky ADV Website
 
 A modern web application for sharing and managing outdoor adventures in Kentucky, featuring GPX route sharing, blog posts, and interactive maps.
 
