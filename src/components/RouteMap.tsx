@@ -1,6 +1,15 @@
 import { useEffect, useRef } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import "ol/ol.css";
+import Map from "ol/Map";
+import View from "ol/View";
+import TileLayer from "ol/layer/Tile";
+import OSM from "ol/source/OSM";
+import VectorLayer from "ol/layer/Vector";
+import VectorSource from "ol/source/Vector";
+import Feature from "ol/Feature";
+import LineString from "ol/geom/LineString";
+import { Style, Stroke } from "ol/style";
+import { fromLonLat } from "ol/proj";
 import { RouteInfo } from "@/utils/gpxParser";
 
 interface RouteMapProps {
@@ -9,79 +18,72 @@ interface RouteMapProps {
 }
 
 export default function RouteMap({ route, className = "" }: RouteMapProps) {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const map = useRef<Map | null>(null);
+  const vectorLayer = useRef<VectorLayer<VectorSource> | null>(null);
 
   useEffect(() => {
-    if (!mapContainer.current) return;
+    if (!mapRef.current) return;
 
-    // Initialize map
-    mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: "mapbox://styles/mapbox/outdoors-v12",
-      center: [route.coordinates[0].lng, route.coordinates[0].lat],
-      zoom: 12,
+    // Create vector source and layer for the route
+    const vectorSource = new VectorSource();
+    vectorLayer.current = new VectorLayer({
+      source: vectorSource,
+      style: new Style({
+        stroke: new Stroke({
+          color: "#ef4444",
+          width: 3,
+        }),
+      }),
     });
 
-    // Add navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
-
-    // Add route line when map loads
-    map.current.on("load", () => {
-      if (!map.current) return;
-
-      // Add route line
-      map.current.addSource("route", {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "LineString",
-            coordinates: route.coordinates.map((point) => [
-              point.lng,
-              point.lat,
-            ]),
-          },
-        },
-      });
-
-      map.current.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
-        layout: {
-          "line-join": "round",
-          "line-cap": "round",
-        },
-        paint: {
-          "line-color": "#ef4444",
-          "line-width": 3,
-        },
-      });
-
-      // Fit bounds to show entire route
-      const bounds = new mapboxgl.LngLatBounds();
-      route.coordinates.forEach((point) => {
-        bounds.extend([point.lng, point.lat]);
-      });
-      map.current.fitBounds(bounds, {
-        padding: 50,
-      });
+    // Create the map
+    map.current = new Map({
+      target: mapRef.current,
+      layers: [
+        new TileLayer({
+          source: new OSM(),
+        }),
+        vectorLayer.current,
+      ],
+      view: new View({
+        center: fromLonLat([
+          route.coordinates[0].lng,
+          route.coordinates[0].lat,
+        ]),
+        zoom: 12,
+      }),
     });
+
+    // Add the route line
+    const coordinates = route.coordinates.map((point) =>
+      fromLonLat([point.lng, point.lat])
+    );
+    const routeFeature = new Feature({
+      geometry: new LineString(coordinates),
+    });
+    vectorSource.addFeature(routeFeature);
+
+    // Fit the view to show the entire route
+    const extent = routeFeature.getGeometry()?.getExtent();
+    if (extent) {
+      map.current.getView().fit(extent, {
+        padding: [50, 50, 50, 50],
+      });
+    }
 
     // Cleanup
     return () => {
       if (map.current) {
-        map.current.remove();
+        map.current.setTarget(null);
+        map.current = null;
       }
     };
   }, [route]);
 
   return (
     <div
-      ref={mapContainer}
+      ref={mapRef}
       className={`w-full h-[400px] rounded-lg overflow-hidden ${className}`}
     />
   );
