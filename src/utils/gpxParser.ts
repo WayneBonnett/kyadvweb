@@ -162,9 +162,17 @@ export async function parseGPXFile(gpxContent: string): Promise<RouteInfo> {
   };
 }
 
-export async function parseGPX(filePath: string): Promise<RouteInfo> {
+export async function parseGPX(input: string): Promise<RouteInfo> {
   try {
-    const content = await fs.readFile(filePath, "utf-8");
+    let content: string;
+
+    // Check if input is a file path or GPX content
+    if (input.includes("<?xml") || input.includes("<gpx")) {
+      content = input;
+    } else {
+      content = await fs.readFile(input, "utf-8");
+    }
+
     return new Promise((resolve, reject) => {
       parseString(content, (err, result) => {
         if (err) {
@@ -223,9 +231,7 @@ export async function parseGPX(filePath: string): Promise<RouteInfo> {
         }
 
         // Get route metadata
-        const name = track.name
-          ? track.name[0]
-          : path.basename(filePath, ".gpx");
+        const name = track.name ? track.name[0] : path.basename(input, ".gpx");
         const description = track.desc ? track.desc[0] : "";
         const date = track.time ? track.time[0] : new Date().toISOString();
 
@@ -233,7 +239,7 @@ export async function parseGPX(filePath: string): Promise<RouteInfo> {
           name,
           description,
           date,
-          downloadUrl: `/content/gpx/${path.basename(filePath)}`,
+          downloadUrl: `/content/gpx/${path.basename(input)}`,
           distance: Math.round((totalDistance / 1000) * 100) / 100, // Convert to km
           elevation: {
             gain: Math.round(elevationGain),
