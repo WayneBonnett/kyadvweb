@@ -106,7 +106,6 @@ export async function parseGPXFile(gpxContent: string): Promise<RouteInfo> {
   let elevationLoss = 0;
   let minElevation = Infinity;
   let maxElevation = -Infinity;
-  let duration = 0;
 
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1];
@@ -139,17 +138,19 @@ export async function parseGPXFile(gpxContent: string): Promise<RouteInfo> {
       minElevation = Math.min(minElevation, parseFloat(curr.ele[0]));
       maxElevation = Math.max(maxElevation, parseFloat(curr.ele[0]));
     }
-
-    // Calculate duration if timestamps are available
-    if (curr.desc && prev.desc) {
-      const currTime = new Date(curr.desc[0]).getTime();
-      const prevTime = new Date(prev.desc[0]).getTime();
-      duration += (currTime - prevTime) / 1000; // Convert to seconds
-    }
   }
+
+  const coordinates = points.map((point) => ({
+    lat: parseFloat(point.$.lat),
+    lng: parseFloat(point.$.lon),
+    ele: point.ele ? parseFloat(point.ele[0]) : 0,
+  }));
 
   return {
     name,
+    description: "",
+    date: new Date().toISOString(),
+    downloadUrl: "",
     distance: distance * 0.621371, // Convert to miles
     elevation: {
       min: minElevation === Infinity ? 0 : minElevation,
@@ -157,8 +158,7 @@ export async function parseGPXFile(gpxContent: string): Promise<RouteInfo> {
       gain: elevationGain,
       loss: elevationLoss,
     },
-    duration: duration / 3600, // Convert to hours
-    points,
+    coordinates,
   };
 }
 
