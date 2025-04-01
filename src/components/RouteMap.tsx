@@ -10,7 +10,7 @@ import Feature from "ol/Feature";
 import LineString from "ol/geom/LineString";
 import { Style, Stroke } from "ol/style";
 import { fromLonLat } from "ol/proj";
-import { RouteInfo } from "../utils/gpxParser";
+import { RouteInfo } from "@/utils/gpxParser";
 
 interface RouteMapProps {
   route: RouteInfo;
