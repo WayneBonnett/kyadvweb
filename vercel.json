@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "env": {
+    "ADMIN_USERNAME": "@admin_username",
+    "ADMIN_PASSWORD_HASH": "@admin_password_hash",
+    "JWT_SECRET": "@jwt_secret",
+    "NEXT_PUBLIC_MAPBOX_TOKEN": "@mapbox_token"
+  }
+}
