@@ -20,7 +20,7 @@ export default function RouteMap({ route, className = "" }: RouteMapProps) {
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/outdoors-v12",
-      center: [route.points[0].lon, route.points[0].lat],
+      center: [route.coordinates[0].lng, route.coordinates[0].lat],
       zoom: 12,
     });
 
@@ -39,7 +39,10 @@ export default function RouteMap({ route, className = "" }: RouteMapProps) {
           properties: {},
           geometry: {
             type: "LineString",
-            coordinates: route.points.map((point) => [point.lon, point.lat]),
+            coordinates: route.coordinates.map((point) => [
+              point.lng,
+              point.lat,
+            ]),
           },
         },
       });
@@ -60,8 +63,8 @@ export default function RouteMap({ route, className = "" }: RouteMapProps) {
 
       // Fit bounds to show entire route
       const bounds = new mapboxgl.LngLatBounds();
-      route.points.forEach((point) => {
-        bounds.extend([point.lon, point.lat]);
+      route.coordinates.forEach((point) => {
+        bounds.extend([point.lng, point.lat]);
       });
       map.current.fitBounds(bounds, {
         padding: 50,
