@@ -1,5 +1,7 @@
 import { parseString } from "xml2js";
 import { promisify } from "util";
+import { promises as fs } from "fs";
+import path from "path";
 
 const parseStringAsync = promisify(parseString);
 
@@ -32,16 +34,23 @@ interface GPXData {
   };
 }
 
-interface RouteInfo {
+export interface RouteInfo {
   name: string;
+  description: string;
+  date: string;
+  downloadUrl: string;
   distance: number;
   elevation: {
+    gain: number;
+    loss: number;
     min: number;
     max: number;
-    gain: number;
   };
-  duration: number;
-  points: GPXPoint[];
+  coordinates: {
+    lat: number;
+    lng: number;
+    ele: number;
+  }[];
 }
 
 interface GPXMetadata {
@@ -94,6 +103,7 @@ export async function parseGPXFile(gpxContent: string): Promise<RouteInfo> {
   // Calculate route statistics
   let distance = 0;
   let elevationGain = 0;
+  let elevationLoss = 0;
   let minElevation = Infinity;
   let maxElevation = -Infinity;
   let duration = 0;
@@ -122,6 +132,8 @@ export async function parseGPXFile(gpxContent: string): Promise<RouteInfo> {
       const eleDiff = parseFloat(curr.ele[0]) - parseFloat(prev.ele[0]);
       if (eleDiff > 0) {
         elevationGain += eleDiff;
+      } else {
+        elevationLoss += Math.abs(eleDiff);
       }
 
       minElevation = Math.min(minElevation, parseFloat(curr.ele[0]));
@@ -143,67 +155,98 @@ export async function parseGPXFile(gpxContent: string): Promise<RouteInfo> {
       min: minElevation === Infinity ? 0 : minElevation,
       max: maxElevation === -Infinity ? 0 : maxElevation,
       gain: elevationGain,
+      loss: elevationLoss,
     },
     duration: duration / 3600, // Convert to hours
     points,
   };
 }
 
-export async function parseGPX(gpxContent: string): Promise<GPXMetadata> {
+export async function parseGPX(filePath: string): Promise<RouteInfo> {
   try {
-    const result = (await parseStringAsync(gpxContent)) as GPXData;
-    const gpx = result.gpx;
-    const metadata = gpx.metadata?.[0] || {};
-    const trk = gpx.trk?.[0] || {};
-    const trkseg = trk.trkseg?.[0] || {};
-    const trkpts = trkseg.trkpt || [];
+    const content = await fs.readFile(filePath, "utf-8");
+    return new Promise((resolve, reject) => {
+      parseString(content, (err, result) => {
+        if (err) {
+          reject(err);
+          return;
+        }
 
-    // Extract name and description
-    const name = metadata.name?.[0] || "";
-    const description = metadata.desc?.[0] || "";
+        const gpx = result.gpx;
+        const track = gpx.trk[0];
+        const segments = track.trkseg;
+        const points = segments[0].trkpt;
 
-    // Calculate distance and elevation
-    let totalDistance = 0;
-    let minElevation = Infinity;
-    let maxElevation = -Infinity;
-    let elevationGain = 0;
-    let previousElevation = 0;
+        // Calculate route statistics
+        let totalDistance = 0;
+        let elevationGain = 0;
+        let elevationLoss = 0;
+        let minElevation = Infinity;
+        let maxElevation = -Infinity;
+        const coordinates = points.map((point: any) => {
+          const lat = parseFloat(point.$.lat);
+          const lng = parseFloat(point.$.lon);
+          const ele = point.ele ? parseFloat(point.ele[0]) : 0;
 
-    for (let i = 0; i < trkpts.length; i++) {
-      const pt = trkpts[i];
-      const lat = parseFloat(pt.$.lat);
-      const lon = parseFloat(pt.$.lon);
-      const ele = parseFloat(pt.ele?.[0] || "0");
+          // Update elevation stats
+          minElevation = Math.min(minElevation, ele);
+          maxElevation = Math.max(maxElevation, ele);
 
-      // Update elevation stats
-      minElevation = Math.min(minElevation, ele);
-      maxElevation = Math.max(maxElevation, ele);
-      if (i > 0 && ele > previousElevation) {
-        elevationGain += ele - previousElevation;
-      }
-      previousElevation = ele;
+          return { lat, lng, ele };
+        });
 
-      // Calculate distance between points
-      if (i > 0) {
-        const prevPt = trkpts[i - 1];
-        const prevLat = parseFloat(prevPt.$.lat);
-        const prevLon = parseFloat(prevPt.$.lon);
-        totalDistance += calculateDistance(lat, lon, prevLat, prevLon);
-      }
-    }
+        // Calculate distance and elevation changes
+        for (let i = 1; i < coordinates.length; i++) {
+          const prev = coordinates[i - 1];
+          const curr = coordinates[i];
 
-    return {
-      name,
-      description,
-      distance: formatDistance(totalDistance),
-      elevation: {
-        min: Math.round(minElevation),
-        max: Math.round(maxElevation),
-        gain: Math.round(elevationGain),
-      },
-    };
+          // Calculate distance using Haversine formula
+          const R = 6371e3; // Earth's radius in meters
+          const φ1 = (prev.lat * Math.PI) / 180;
+          const φ2 = (curr.lat * Math.PI) / 180;
+          const Δφ = ((curr.lat - prev.lat) * Math.PI) / 180;
+          const Δλ = ((curr.lng - prev.lng) * Math.PI) / 180;
+
+          const a =
+            Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          totalDistance += R * c;
+
+          // Calculate elevation changes
+          const eleDiff = curr.ele - prev.ele;
+          if (eleDiff > 0) {
+            elevationGain += eleDiff;
+          } else {
+            elevationLoss += Math.abs(eleDiff);
+          }
+        }
+
+        // Get route metadata
+        const name = track.name
+          ? track.name[0]
+          : path.basename(filePath, ".gpx");
+        const description = track.desc ? track.desc[0] : "";
+        const date = track.time ? track.time[0] : new Date().toISOString();
+
+        resolve({
+          name,
+          description,
+          date,
+          downloadUrl: `/content/gpx/${path.basename(filePath)}`,
+          distance: Math.round((totalDistance / 1000) * 100) / 100, // Convert to km
+          elevation: {
+            gain: Math.round(elevationGain),
+            loss: Math.round(elevationLoss),
+            min: Math.round(minElevation),
+            max: Math.round(maxElevation),
+          },
+          coordinates,
+        });
+      });
+    });
   } catch (error) {
-    console.error("Error parsing GPX:", error);
+    console.error("Error parsing GPX file:", error);
     throw error;
   }
 }
