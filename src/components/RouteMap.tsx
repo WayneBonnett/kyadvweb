@@ -10,7 +10,7 @@ import Feature from "ol/Feature";
 import LineString from "ol/geom/LineString";
 import { Style, Stroke } from "ol/style";
 import { fromLonLat } from "ol/proj";
-import { RouteInfo } from "@/utils/gpxParser";
+import { RouteInfo } from "../utils/gpxParser";
 
 interface RouteMapProps {
   route: RouteInfo;
@@ -75,7 +75,7 @@ export default function RouteMap({ route, className = "" }: RouteMapProps) {
     // Cleanup
     return () => {
       if (map.current) {
-        map.current.setTarget(null);
+        map.current.setTarget(undefined);
         map.current = null;
       }
     };
